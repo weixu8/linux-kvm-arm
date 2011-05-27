@@ -16,6 +16,8 @@
 
 #include <asm/kvm_emulate.h>
 
+#include "trace.h"
+
 /*
  * Return a pointer to the register number valid in the specified mode of
  * the virtual CPU.
@@ -67,4 +69,41 @@ u32* kvm_vcpu_reg(struct kvm_vcpu *vcpu, u8 reg_num, u32 mode)
 
 	BUG();
 	return NULL;
+}
+
+
+int kvm_handle_cp10_id(struct kvm_vcpu *vcpu, struct kvm_run *run)
+{
+	KVMARM_NOT_IMPLEMENTED();
+	return -EINVAL;
+}
+
+int kvm_handle_cp_0_13_access(struct kvm_vcpu *vcpu, struct kvm_run *run)
+{
+	KVMARM_NOT_IMPLEMENTED();
+	return -EINVAL;
+}
+
+int kvm_handle_cp14_load_store(struct kvm_vcpu *vcpu, struct kvm_run *run)
+{
+	KVMARM_NOT_IMPLEMENTED();
+	return -EINVAL;
+}
+
+int kvm_handle_cp14_access(struct kvm_vcpu *vcpu, struct kvm_run *run)
+{
+	KVMARM_NOT_IMPLEMENTED();
+	return -EINVAL;
+}
+
+int kvm_handle_cp15_access(struct kvm_vcpu *vcpu, struct kvm_run *run)
+{
+	KVMARM_NOT_IMPLEMENTED();
+	return -EINVAL;
+}
+
+int kvm_handle_wfi(struct kvm_vcpu *vcpu, struct kvm_run *run)
+{
+	KVMARM_NOT_IMPLEMENTED();
+	return -EINVAL;
 }
