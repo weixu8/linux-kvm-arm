@@ -187,6 +187,9 @@ static bool access_dcsw(struct kvm_vcpu *vcpu,
 
 	cpu = get_cpu();
 
+	if (!p->is_write)
+		return false;
+
 	cpumask_setall(&vcpu->arch.require_dcache_flush);
 	cpumask_clear_cpu(cpu, &vcpu->arch.require_dcache_flush);
 
@@ -195,9 +198,6 @@ static bool access_dcsw(struct kvm_vcpu *vcpu,
 		flush_cache_all();
 		goto done;
 	}
-
-	if (!p->is_write)
-		return false;
 
 	val = *vcpu_reg(vcpu, p->Rt1);
 
