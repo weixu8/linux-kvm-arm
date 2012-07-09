@@ -23,6 +23,7 @@
 #include <asm/asm-offsets.h>
 #include <asm/kvm_asm.h>
 #include <asm/kvm_arm.h>
+#include <asm/vfpmacros.h>
 
 #define VCPU_USR_REG(_reg_nr)	(VCPU_USR_REGS + (_reg_nr * 4))
 #define VCPU_USR_SP		(VCPU_USR_REG(13))
@@ -88,6 +89,48 @@ ENTRY(__kvm_flush_vm_context)
 	hvc	#0			@ switch back to svc-mode, see hyp_svc
 	bx	lr
 ENDPROC(__kvm_flush_vm_context)
+
+/* Clobbers {r2-r7} */
+.macro store_vfp_state vfp_off, vcpup
+	add	r6, \vcpup, \vfp_off
+
+	@ The VFPFMRX and VFPFMXR macros are the VMRS and VMSR instructions
+	VFPFMRX	r2, FPEXC
+	@ Make sure VFP is enabled so we can touch the registers.
+	orr	r7, r2, #FPEXC_EN
+	VFPFMXR	FPEXC, r7
+
+	VFPFMRX	r3, FPSCR
+	tst	r2, #FPEXC_EX		@ Check for VFP Subarchitecture
+	beq	1f
+	@ If FPEXC_EX is 0, then FPINST/FPINST2 reads are upredictable, so
+	@ we only need to save them if FPEXC_EX is set.
+	VFPFMRX r4, FPINST
+	tst	r2, #FPEXC_FP2V
+	VFPFMRX r5, FPINST2, ne		@ vmrsne
+	bic	r7, r2, #FPEXC_EX	@ FPEXC_EX disable
+	VFPFMXR	FPEXC, r7
+1:
+	VFPFSTMIA r6, r7		@ Save VFP registers
+	stm	r6, {r2-r5}		@ Save FPEXC, FPSCR, FPINST, FPINST2
+.endm
+
+/* Assume FPEXC_EN is on and FPEXC_EX is off, clobbers {r2-r7} */
+.macro restore_vfp_state vfp_off, vcpup
+	add	r6, \vcpup, \vfp_off
+
+	VFPFLDMIA r6, r7		@ Load VFP registers
+	ldm	r6, {r2-r5}		@ Load FPEXC, FPSCR, FPINST, FPINST2
+
+	VFPFMXR FPSCR, r3
+	tst	r2, #FPEXC_EX		@ Check for VFP Subarchitecture
+	beq	1f
+	VFPFMXR FPINST, r4
+	tst	r2, #FPEXC_FP2V
+	VFPFMXR FPINST2, r5, ne
+1:
+	VFPFMXR FPEXC, r2	@ FPEXC	(last, in case !EN)
+.endm
 
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 @  Hypervisor world-switch code
@@ -281,16 +324,16 @@ ENDPROC(__kvm_flush_vm_context)
 .endm
 
 /* Configures the HCPTR (Hyp Coprocessor Trap Register) on entry/return
- * (hardware reset value is 0) */
-.macro set_hcptr entry
+ * (hardware reset value is 0). Keep previous value in r2. */
+.macro set_hcptr entry, mask
 	mrc	p15, 4, r2, c1, c1, 2
-	ldr	r3, =(HCPTR_TTA)
+	ldr	r3, =\mask
 	.if \entry == 1
-	orr	r2, r2, r3		@ Trap some coproc-accesses
+	orr	r3, r2, r3		@ Trap coproc-accesses defined in mask
 	.else
-	bic	r2, r2, r3		@ Don't trap any coproc- accesses
+	bic	r3, r2, r3		@ Don't trap defined coproc-accesses
 	.endif
-	mcr	p15, 4, r2, c1, c1, 2
+	mcr	p15, 4, r3, c1, c1, 2
 .endm
 
 /* Enable/Disable: stage-2 trans., trap interrupts, trap wfi, trap smc */
@@ -328,6 +371,16 @@ ENTRY(__kvm_vcpu_run)
 	read_cp15_state
 	write_cp15_state 1, r0
 
+	@ If the host kernel has not been configured with VFPv3 support,
+	@ then it is safer if we deny guests from using it as well.
+#ifdef CONFIG_VFPv3
+	@ Set FPEXC_EN so the guest doesn't trap floating point instructions
+	VFPFMRX r2, FPEXC		@ VMRS
+	push	{r2}
+	orr	r2, r2, #FPEXC_EN
+	VFPFMXR FPEXC, r2		@ VMSR
+#endif
+
 	push	{r0}			@ Push the VCPU pointer
 
 	@ Configure Hyp-role
@@ -335,7 +388,7 @@ ENTRY(__kvm_vcpu_run)
 
 	@ Trap coprocessor CRx accesses
 	set_hstr 1
-	set_hcptr 1
+	set_hcptr 1, (HCPTR_TTA | HCPTR_TCP(10) | HCPTR_TCP(11))
 
 	@ Write configured ID register into MIDR alias
 	ldr	r1, [r0, #VCPU_MIDR]
@@ -395,7 +448,22 @@ __kvm_vcpu_return:
 
 	@ Don't trap coprocessor accesses for host kernel
 	set_hstr 0
-	set_hcptr 0
+	set_hcptr 0, (HCPTR_TTA | HCPTR_TCP(10) | HCPTR_TCP(11))
+
+#ifdef CONFIG_VFPv3
+	@ Save floating point registers we if let guest use them.
+	tst	r2, #(HCPTR_TCP(10) | HCPTR_TCP(11))
+	bne	after_vfp_restore
+
+	@ Switch VFP/NEON hardware state to the host's
+	store_vfp_state #VCPU_VFP_GUEST, r1
+	restore_vfp_state #VCPU_VFP_HOST, r1
+
+after_vfp_restore:
+	@ Restore FPEXC_EN which we clobbered on entry
+	pop	{r2}
+	VFPFMXR FPEXC, r2
+#endif
 
 	@ Reset Hyp-role
 	configure_hyp_role 0, r1
@@ -555,6 +623,10 @@ hyp_hvc:
 	@ Check syndrome register
 	mrc	p15, 4, r0, c5, c2, 0	@ HSR
 	lsr	r1, r0, #HSR_EC_SHIFT
+#ifdef CONFIG_VFPv3
+	cmp	r1, #HSR_EC_CP_0_13
+	beq	switch_to_guest_vfp
+#endif
 	cmp	r1, #HSR_EC_HVC
 	bne	guest_trap		@ Not HVC instr.
 
@@ -628,6 +700,27 @@ guest_trap:
 
 1:	mov	r0, #ARM_EXCEPTION_HVC
 	b	__kvm_vcpu_return
+
+@ If VFPv3 support is not available, then we will not switch the VFP
+@ registers; however cp10 and cp11 accesses will still trap and fallback
+@ to the regular coprocessor emulation code, which currently will
+@ inject an undefined exception to the guest.
+#ifdef CONFIG_VFPv3
+switch_to_guest_vfp:
+	ldr	r0, [sp, #12]		@ Load VCPU pointer
+	push	{r3-r7}
+
+	@ NEON/VFP used.  Turn on VFP access.
+	set_hcptr 0, (HCPTR_TCP(10) | HCPTR_TCP(11))
+
+	@ Switch VFP/NEON hardware state to the guest's
+	store_vfp_state #VCPU_VFP_HOST, r0
+	restore_vfp_state #VCPU_VFP_GUEST, r0
+
+	pop	{r3-r7}
+	pop	{r0-r2}
+	eret
+#endif
 
 	.align
 hyp_irq:

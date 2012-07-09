@@ -168,6 +168,8 @@ int main(void)
   DEFINE(VCPU_TID_URW,		offsetof(struct kvm_vcpu, arch.cp15[c13_TID_URW]));
   DEFINE(VCPU_TID_URO,		offsetof(struct kvm_vcpu, arch.cp15[c13_TID_URO]));
   DEFINE(VCPU_TID_PRIV,		offsetof(struct kvm_vcpu, arch.cp15[c13_TID_PRIV]));
+  DEFINE(VCPU_VFP_GUEST,	offsetof(struct kvm_vcpu, arch.vfp_guest));
+  DEFINE(VCPU_VFP_HOST,		offsetof(struct kvm_vcpu, arch.vfp_host));
   DEFINE(VCPU_REGS,		offsetof(struct kvm_vcpu, arch.regs));
   DEFINE(VCPU_USR_REGS,		offsetof(struct kvm_vcpu, arch.regs.usr_regs));
   DEFINE(VCPU_SVC_REGS,		offsetof(struct kvm_vcpu, arch.regs.svc_regs));

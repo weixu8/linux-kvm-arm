@@ -75,6 +75,10 @@ int kvm_handle_cp10_id(struct kvm_vcpu *vcpu, struct kvm_run *run)
 
 int kvm_handle_cp_0_13_access(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
+	/*
+	 * We can get here, if the host has been built without VFPv3 support,
+	 * but the guest attempted a floating point operation.
+	 */
 	kvm_inject_undefined(vcpu);
 	return 1;
 }

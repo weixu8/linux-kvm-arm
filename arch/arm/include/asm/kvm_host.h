@@ -19,6 +19,8 @@
 #ifndef __ARM_KVM_HOST_H__
 #define __ARM_KVM_HOST_H__
 
+#include <asm/fpstate.h>
+
 #define KVM_MAX_VCPUS 4
 #define KVM_MEMORY_SLOTS 32
 #define KVM_PRIVATE_MEM_SLOTS 4
@@ -125,6 +127,10 @@ struct kvm_vcpu_arch {
 
 	/* Hyp exception information */
 	u32 hyp_pc;		/* PC when exception was taken from Hyp mode */
+
+	/* Floating point registers (VFP and Advanced SIMD/NEON) */
+	struct vfp_hard_struct vfp_guest;
+	struct vfp_hard_struct vfp_host;
 };
 
 struct kvm_vm_stat {
