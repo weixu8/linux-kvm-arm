@@ -65,6 +65,7 @@
  * TSC:		Trap SMC
  * TSW:		Trap cache operations by set/way
  * TWI:		Trap WFI
+ * TIDCP:	Trap L2CTLR/L2ECTLR.
  * BSU_IS:	Upgrade barriers to the inner shareable domain
  * FB:		Force broadcast of all maintainance operations
  * AMO:		Override CPSR.A and enable signaling with VA
@@ -74,7 +75,7 @@
  */
 #define HCR_GUEST_MASK (HCR_TSC | HCR_TSW | HCR_TWI | HCR_VM | HCR_BSU_IS | \
 			HCR_FB | HCR_TAC | HCR_AMO | HCR_IMO | HCR_FMO | \
-			HCR_SWIO)
+			HCR_SWIO | HCR_TIDCP)
 #define HCR_VIRT_EXCP_MASK (HCR_VA | HCR_VI | HCR_VF)
 
 /* System Control Register (SCTLR) bits */
@@ -121,6 +122,16 @@
 #define HCPTR_TASE	(1 << 15)
 #define HCPTR_TTA	(1 << 20)
 #define HCPTR_TCPAC	(1 << 31)
+
+/* Hyp Debug Configuration Register bits */
+#define HDCR_TDRA	(1 << 11)
+#define HDCR_TDOSA	(1 << 10)
+#define HDCR_TDA	(1 << 9)
+#define HDCR_TDE	(1 << 8)
+#define HDCR_HPME	(1 << 7)
+#define HDCR_TPM	(1 << 6)
+#define HDCR_TPMCR	(1 << 5)
+#define HDCR_HPMN_MASK	(0x1F)
 
 /* Virtualization Translation Control Register (VTCR) bits */
 #define VTCR_SH0	(3 << 12)

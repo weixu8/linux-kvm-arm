@@ -310,9 +310,9 @@ ENDPROC(__kvm_flush_vm_context)
  * (hardware reset value is 0) */
 .macro set_hstr entry
 	mrc	p15, 4, r2, c1, c1, 3
-	ldr	r3, =(HSTR_T(9) | HSTR_T(11) | HSTR_T(15))
+	ldr	r3, =(HSTR_T(11) | HSTR_T(15))
 	.if \entry == 1
-	orr	r2, r2, r3		@ Trap CR{9,11,15}
+	orr	r2, r2, r3		@ Trap CR{11,15}
 	.else
 	bic	r2, r2, r3		@ Don't trap any CRx accesses
 	.endif
@@ -330,6 +330,19 @@ ENDPROC(__kvm_flush_vm_context)
 	bic	r3, r2, r3		@ Don't trap defined coproc-accesses
 	.endif
 	mcr	p15, 4, r3, c1, c1, 2
+.endm
+
+/* Configures the HDCR (Hyp Debug Configuration Register) on entry/return
+ * (hardware reset value is 0) */
+.macro set_hdcr entry
+	mrc	p15, 4, r2, c1, c1, 1
+	ldr	r3, =(HDCR_TPM|HDCR_TPMCR)
+	.if \entry == 1
+	orr	r2, r2, r3		@ Trap some perfmon accesses
+	.else
+	bic	r2, r2, r3		@ Don't trap any perfmon accesses
+	.endif
+	mcr	p15, 4, r2, c1, c1, 1
 .endm
 
 /* Enable/Disable: stage-2 trans., trap interrupts, trap wfi, trap smc */
@@ -385,6 +398,7 @@ ENTRY(__kvm_vcpu_run)
 	@ Trap coprocessor CRx accesses
 	set_hstr 1
 	set_hcptr 1, (HCPTR_TTA | HCPTR_TCP(10) | HCPTR_TCP(11))
+	set_hdcr 1
 
 	@ Write configured ID register into MIDR alias
 	ldr	r1, [r0, #VCPU_MIDR]
@@ -445,6 +459,7 @@ __kvm_vcpu_return:
 	@ Don't trap coprocessor accesses for host kernel
 	set_hstr 0
 	set_hcptr 0, (HCPTR_TTA | HCPTR_TCP(10) | HCPTR_TCP(11))
+	set_hdcr 0
 
 #ifdef CONFIG_VFPv3
 	@ Save floating point registers we if let guest use them.
