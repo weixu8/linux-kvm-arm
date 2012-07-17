@@ -43,6 +43,7 @@
 #include <asm/kvm_asm.h>
 #include <asm/kvm_mmu.h>
 #include <asm/kvm_emulate.h>
+#include <asm/kvm_coproc.h>
 
 #ifdef REQUIRES_SEC
 __asm__(".arch_extension	sec");
