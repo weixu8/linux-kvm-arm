@@ -2103,12 +2103,16 @@ static long kvm_vm_ioctl(struct file *filp,
 			goto out;
 
 		r = kvm_vm_ioctl_irq_line(kvm, &irq_event);
+		if (r)
+			goto out;
 
+		r = -EFAULT;
 		if (ioctl == KVM_IRQ_LINE_STATUS) {
 			if (copy_to_user(argp, &irq_event, sizeof irq_event))
-				r = -EFAULT;
+				goto out;
 		}
 
+		r = 0;
 		break;
 	}
 #endif

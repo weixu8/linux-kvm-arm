@@ -929,8 +929,8 @@ int kvm_vm_ioctl_irq_line(struct kvm *kvm, struct kvm_irq_level *irq_event)
 	if (!irqchip_in_kernel(kvm))
 		return -ENXIO;
 
-	irq_event->statusstatus = kvm_set_irq(kvm, KVM_USERSPACE_IRQ_SOURCE_ID,
-					      irq_event->irq, irq_event->level);
+	irq_event->status = kvm_set_irq(kvm, KVM_USERSPACE_IRQ_SOURCE_ID,
+					irq_event->irq, irq_event->level);
 	return 0;
 }
 
