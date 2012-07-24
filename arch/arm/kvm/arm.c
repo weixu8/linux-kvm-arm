@@ -249,6 +249,8 @@ int __attribute_const__ kvm_target_cpu(void)
 	switch ((midr >> 4) & 0xfff) {
 	case CORTEX_A15:
 		return CORTEX_A15;
+	case CORTEX_AEM: /* HACK Alert!!! */
+		return CORTEX_A15;
 	default:
 		return -EINVAL;
 	}
@@ -802,7 +804,7 @@ int kvm_arch_init(void *opaque)
 	int err;
 
 	if (kvm_target_cpu() < 0) {
-		kvm_err("Target CPU not supported!\n");
+		kvm_err("Target CPU (%#08x) not supported!\n", read_cpuid_id());
 		return -ENODEV;
 	}
 
