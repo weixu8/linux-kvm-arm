@@ -316,7 +316,7 @@ static int stage2_set_pte(struct kvm *kvm, phys_addr_t addr,
 	/* Create 2nd stage page table mapping - Level 3 */
 	set_pte_ext(pte, *new_pte, 0);
 
-	return 0;
+	return 1;
 }
 
 static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
