@@ -49,7 +49,7 @@ static DEFINE_PER_CPU(unsigned long, kvm_arm_hyp_stack_page);
 /* The VMID used in the VTTBR */
 static atomic64_t kvm_vmid_gen = ATOMIC64_INIT(1);
 static u8 kvm_next_vmid;
-DEFINE_SPINLOCK(kvm_vmid_lock);
+static DEFINE_SPINLOCK(kvm_vmid_lock);
 
 int kvm_arch_hardware_enable(void *garbage)
 {
@@ -332,7 +332,7 @@ static void reset_vm_context(void *info)
 }
 
 /**
- * check_new_vmid_gen - check that the VMID is still valid
+ * need_new_vmid_gen - check that the VMID is still valid
  * @kvm: The VM's VMID to checkt
  *
  * return true if there is a new generation of VMIDs being used
@@ -343,7 +343,7 @@ static void reset_vm_context(void *info)
  * VMID for the new generation, we must flush necessary caches and TLBs on all
  * CPUs.
  */
-static bool check_new_vmid_gen(struct kvm *kvm)
+static bool need_new_vmid_gen(struct kvm *kvm)
 {
 	return unlikely(kvm->arch.vmid_gen != atomic64_read(&kvm_vmid_gen));
 }
@@ -360,7 +360,7 @@ static void update_vttbr(struct kvm *kvm)
 {
 	phys_addr_t pgd_phys;
 
-	if (!check_new_vmid_gen(kvm))
+	if (!need_new_vmid_gen(kvm))
 		return;
 
 	spin_lock(&kvm_vmid_lock);
@@ -370,16 +370,12 @@ static void update_vttbr(struct kvm *kvm)
 		atomic64_inc(&kvm_vmid_gen);
 		kvm_next_vmid = 1;
 
-		/* This does nothing on UP */
-		smp_call_function(reset_vm_context, NULL, 1);
-
 		/*
 		 * On SMP we know no other CPUs can use this CPU's or
 		 * each other's VMID since the kvm_vmid_lock blocks
 		 * them from reentry to the guest.
 		 */
-
-		reset_vm_context(NULL);
+		on_each_cpu(reset_vm_context, NULL, 1);
 	}
 
 	kvm->arch.vmid_gen = atomic64_read(&kvm_vmid_gen);
@@ -493,26 +489,9 @@ static int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	default:
 		kvm_pr_unimpl("Unsupported exception type: %d",
 			      exception_index);
-		return -EINVAL;
+		run->exit_reason = KVM_EXIT_INTERNAL_ERROR;
+		return 0;
 	}
-}
-
-/*
- * Return 0 to proceed with guest entry
- */
-static int vcpu_pre_guest_enter(struct kvm_vcpu *vcpu, int *exit_reason)
-{
-	if (signal_pending(current)) {
-		*exit_reason = KVM_EXIT_INTR;
-		return -EINTR;
-	}
-
-	if (check_new_vmid_gen(vcpu->kvm))
-		return 1;
-
-	BUG_ON(__vcpu_mode(*vcpu_cpsr(vcpu)) == 0xf);
-
-	return 0;
 }
 
 /**
@@ -528,8 +507,7 @@ static int vcpu_pre_guest_enter(struct kvm_vcpu *vcpu, int *exit_reason)
  */
 int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
-	int ret = 0;
-	int exit_reason;
+	int ret;
 	sigset_t sigsaved;
 
 	if (run->exit_reason == KVM_EXIT_MMIO) {
@@ -541,8 +519,9 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	if (vcpu->sigset_active)
 		sigprocmask(SIG_SETMASK, &vcpu->sigset, &sigsaved);
 
-	exit_reason = KVM_EXIT_UNKNOWN;
-	while (exit_reason == KVM_EXIT_UNKNOWN) {
+	ret = 1;
+	run->exit_reason = KVM_EXIT_UNKNOWN;
+	while (ret > 0) {
 		/*
 		 * Check conditions before entering the guest
 		 */
@@ -564,13 +543,21 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		preempt_disable();
 		local_irq_disable();
 
-		/* Re-check atomic conditions */
-		ret = vcpu_pre_guest_enter(vcpu, &exit_reason);
-		if (ret != 0) {
+		/*
+		 * Re-check atomic conditions
+		 */
+		if (signal_pending(current)) {
+			ret = -EINTR;
+			run->exit_reason = KVM_EXIT_INTR;
+		}
+
+		if (ret <= 0 || need_new_vmid_gen(vcpu->kvm)) {
 			local_irq_enable();
 			preempt_enable();
 			continue;
 		}
+
+		BUG_ON(__vcpu_mode(*vcpu_cpsr(vcpu)) == 0xf);
 
 		/**************************************************************
 		 * Enter the guest
@@ -593,18 +580,10 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 
 		ret = handle_exit(vcpu, run, ret);
 		preempt_enable();
-		if (ret < 0) {
-			kvm_err("Error in handle_exit\n");
-			break;
-		} else {
-			exit_reason = ret; /* 0 == KVM_EXIT_UNKNOWN */
-		}
 	}
 
 	if (vcpu->sigset_active)
 		sigprocmask(SIG_SETMASK, &sigsaved, NULL);
-
-	run->exit_reason = exit_reason;
 	return ret;
 }
 
