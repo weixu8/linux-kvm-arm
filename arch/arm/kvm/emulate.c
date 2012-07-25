@@ -520,7 +520,7 @@ int kvm_handle_wfi(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	vcpu->stat.wfi_exits++;
 	if (!vcpu->arch.irq_lines)
 		vcpu->arch.wait_for_interrupts = 1;
-	return 0;
+	return 1;
 }
 
 
