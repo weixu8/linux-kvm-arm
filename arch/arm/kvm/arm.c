@@ -409,14 +409,15 @@ static int handle_hvc(struct kvm_vcpu *vcpu, struct kvm_run *run)
 				     vcpu->arch.regs.pc);
 	kvm_debug("         HSR: %8x", vcpu->arch.hsr);
 	kvm_inject_undefined(vcpu);
-	return 0;
+	return 1;
 }
 
 static int handle_smc(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
 	/* We don't support SMC; don't do that. */
 	kvm_debug("smc: at %08x", vcpu->arch.regs.pc);
-	return -EINVAL;
+	kvm_inject_undefined(vcpu);
+	return 1;
 }
 
 static int handle_pabt_hyp(struct kvm_vcpu *vcpu, struct kvm_run *run)
@@ -466,7 +467,7 @@ static int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	switch (exception_index) {
 	case ARM_EXCEPTION_IRQ:
 		vcpu->stat.irq_exits++;
-		return 0;
+		return 1;
 	case ARM_EXCEPTION_UNDEFINED:
 		kvm_err("Undefined exception in Hyp mode at: %#08x\n",
 			vcpu->arch.hyp_pc);
