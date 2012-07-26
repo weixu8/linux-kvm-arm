@@ -538,7 +538,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		 * as exit handling touches CPU-specific resources, such as
 		 * caches, and we must stay on the same CPU.
 		 *
-		 * Code that might sleep must disable preemption and access
+		 * Code that might sleep must enable preemption and access
 		 * CPU-specific resources first.
 		 */
 		preempt_disable();
