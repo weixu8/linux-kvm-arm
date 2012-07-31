@@ -20,6 +20,7 @@
 #include <asm/kvm_arm.h>
 #include <asm/kvm_host.h>
 #include <asm/kvm_emulate.h>
+#include <asm/cacheflush.h>
 #include <trace/events/kvm.h>
 
 #include "trace.h"
@@ -299,6 +300,18 @@ static bool write_dcsw(struct kvm_vcpu *vcpu,
 		       unsigned long cp15_reg)
 {
 	u32 val;
+	int cpu;
+
+	cpu = get_cpu();
+
+	cpumask_setall(&vcpu->arch.require_dcache_flush);
+	cpumask_clear_cpu(cpu, &vcpu->arch.require_dcache_flush);
+
+	/* If we were already preempted, take the long way around */
+	if (cpu != vcpu->arch.last_pcpu) {
+		flush_cache_all();
+		goto done;
+	}
 
 	val = *vcpu_reg(vcpu, p->Rt1);
 
@@ -313,8 +326,8 @@ static bool write_dcsw(struct kvm_vcpu *vcpu,
 		break;
 	}
 
-	cpumask_setall(&vcpu->arch.require_dcache_flush);
-	cpumask_clear_cpu(vcpu->cpu, &vcpu->arch.require_dcache_flush);
+done:
+	put_cpu();
 
 	return true;
 }

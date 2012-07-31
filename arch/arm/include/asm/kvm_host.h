@@ -113,6 +113,7 @@ struct kvm_vcpu_arch {
 				   instructions */
 
 	/* dcache set/way operation pending */
+	int last_pcpu;
 	cpumask_t require_dcache_flush;
 
 	/* IO related fields */

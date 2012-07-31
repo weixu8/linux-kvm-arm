@@ -285,8 +285,8 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	/*
 	 * Check whether this vcpu requires the cache to be flushed on
 	 * this physical CPU. This is a consequence of doing dcache
-	 * operations by set/way on this vcpu. We do it here in order
-	 * to be in a non-preemptible section.
+	 * operations by set/way on this vcpu. We do it here to be in
+	 * a non-preemptible section.
 	 */
 	if (cpumask_test_and_clear_cpu(cpu, &vcpu->arch.require_dcache_flush))
 		flush_cache_all(); /* We'd really want v7_flush_dcache_all() */
@@ -535,15 +535,6 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		cond_resched();
 		update_vttbr(vcpu->kvm);
 
-		/*
-		 * Make sure preemption is disabled while calling handle_exit
-		 * as exit handling touches CPU-specific resources, such as
-		 * caches, and we must stay on the same CPU.
-		 *
-		 * Code that might sleep must enable preemption and access
-		 * CPU-specific resources first.
-		 */
-		preempt_disable();
 		local_irq_disable();
 
 		/*
@@ -556,7 +547,6 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 
 		if (ret <= 0 || need_new_vmid_gen(vcpu->kvm)) {
 			local_irq_enable();
-			preempt_enable();
 			continue;
 		}
 
@@ -572,6 +562,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		ret = __kvm_vcpu_run(vcpu);
 
 		vcpu->mode = OUTSIDE_GUEST_MODE;
+		vcpu->arch.last_pcpu = smp_processor_id();
 		vcpu->stat.exits++;
 		kvm_guest_exit();
 		trace_kvm_exit(vcpu->arch.regs.pc);
@@ -582,7 +573,6 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		 *************************************************************/
 
 		ret = handle_exit(vcpu, run, ret);
-		preempt_enable();
 	}
 
 	if (vcpu->sigset_active)

@@ -341,10 +341,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 		return -EFAULT;
 	}
 
-	/* preemption disabled for handle_exit, gfn_to_pfn may sleep */
-	preempt_enable();
 	pfn = gfn_to_pfn_prot(vcpu->kvm, gfn, write_fault, &writable);
-	preempt_disable();
 
 	if (is_error_pfn(pfn)) {
 		put_page(pfn_to_page(pfn));
