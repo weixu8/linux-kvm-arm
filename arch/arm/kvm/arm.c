@@ -472,7 +472,6 @@ static int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 
 	switch (exception_index) {
 	case ARM_EXCEPTION_IRQ:
-		vcpu->stat.irq_exits++;
 		return 1;
 	case ARM_EXCEPTION_UNDEFINED:
 		kvm_err("Undefined exception in Hyp mode at: %#08x\n",
@@ -563,7 +562,6 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 
 		vcpu->mode = OUTSIDE_GUEST_MODE;
 		vcpu->arch.last_pcpu = smp_processor_id();
-		vcpu->stat.exits++;
 		kvm_guest_exit();
 		trace_kvm_exit(vcpu->arch.regs.pc);
 		/*

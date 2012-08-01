@@ -550,7 +550,6 @@ static int io_mem_abort(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	 */
 	*vcpu_pc(vcpu) += instr_len;
 	kvm_adjust_itstate(vcpu);
-	vcpu->stat.mmio_exits++;
 	run->exit_reason = KVM_EXIT_MMIO;
 	return 0;
 }
