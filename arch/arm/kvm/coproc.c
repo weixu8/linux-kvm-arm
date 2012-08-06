@@ -304,7 +304,7 @@ static const struct coproc_reg cp15_cortex_a15_regs[] = {
 static const struct coproc_reg *get_target_table(unsigned target, size_t *num)
 {
 	switch (target) {
-	case CORTEX_A15:
+	case KVM_ARM_TARGET_CORTEX_A15:
 		*num = ARRAY_SIZE(cp15_cortex_a15_regs);
 		return cp15_cortex_a15_regs;
 	default:
@@ -344,7 +344,7 @@ static int emulate_cp15(struct kvm_vcpu *vcpu,
 	size_t num;
 	const struct coproc_reg *table, *r;
 
-	table = get_target_table(kvm_target_cpu(), &num);
+	table = get_target_table(vcpu->arch.target, &num);
 
 	/* Search target-specific then generic table. */
 	r = find_reg(params, table, num);

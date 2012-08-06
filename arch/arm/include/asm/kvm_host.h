@@ -26,6 +26,8 @@
 #define KVM_PRIVATE_MEM_SLOTS 4
 #define KVM_COALESCED_MMIO_PAGE_OFFSET 1
 
+#define NUM_FEATURES 0
+
 /* We don't currently support large pages. */
 #define KVM_HPAGE_GFN_SHIFT(x)	0
 #define KVM_NR_PAGE_SIZES	1
@@ -102,6 +104,9 @@ enum cp15_regs {
 struct kvm_vcpu_arch {
 	struct kvm_vcpu_regs regs;
 
+	u32 target; /* Currently KVM_ARM_TARGET_CORTEX_A15 */
+	DECLARE_BITMAP(features, NUM_FEATURES);
+
 	/* System control coprocessor (cp15) */
 	u32 cp15[nr_cp15_regs];
 
@@ -157,4 +162,7 @@ static inline int kvm_test_age_hva(struct kvm *kvm, unsigned long hva)
 	return 0;
 }
 
+struct kvm_vcpu_init;
+int kvm_vcpu_set_target(struct kvm_vcpu *vcpu,
+			const struct kvm_vcpu_init *init);
 #endif /* __ARM_KVM_HOST_H__ */

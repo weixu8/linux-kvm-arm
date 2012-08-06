@@ -22,7 +22,6 @@
 #include <asm/types.h>
 
 /* Supported Processor Types */
-#define CORTEX_A15	(0xC0F)
 #define CORTEX_AEM	(0xC08) /* Hack */
 
 /* Multiprocessor Affinity Register */
