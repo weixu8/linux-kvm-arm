@@ -321,13 +321,13 @@ static void reset_mpidr(struct kvm_vcpu *vcpu, const struct coproc_reg *r)
 
 /* Architected CP15 registers. */
 static const struct coproc_reg cp15_regs[] = {
-	/* TTBCR: swapped by interrupt.S. */
-	{ CRn( 2), CRm( 0), Op1( 0), Op2( 0), is32,
-			NULL, reset_val, c2_TTBCR, 0x00000000 },
-
 	/* TTBR0/TTBR1: swapped by interrupt.S. */
 	{ CRm( 2), Op1( 0), is64, NULL, reset_unknown64, c2_TTBR0 },
 	{ CRm( 2), Op1( 1), is64, NULL, reset_unknown64, c2_TTBR1 },
+
+	/* TTBCR: swapped by interrupt.S. */
+	{ CRn( 2), CRm( 0), Op1( 0), Op2( 0), is32,
+			NULL, reset_val, c2_TTBCR, 0x00000000 },
 
 	/* DACR: swapped by interrupt.S. */
 	{ CRn( 3), CRm( 0), Op1( 0), Op2( 0), is32,
@@ -573,3 +573,25 @@ int kvm_handle_cp15_32(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	return emulate_cp15(vcpu, &params);
 }
 
+static int cmp_reg(const struct coproc_reg *i1, const struct coproc_reg *i2)
+{
+	if (i1->CRn != i2->CRn)
+		return i1->CRn - i2->CRn;
+	if (i1->CRm != i2->CRm)
+		return i1->CRm - i2->CRm;
+	if (i1->Op1 != i2->Op1)
+		return i1->Op1 - i2->Op1;
+	return i1->Op2 - i2->Op2;
+}
+
+void kvm_coproc_table_init(void)
+{
+	unsigned int i;
+
+	/* Make sure tables are unique and in order. */
+	for (i = 1; i < ARRAY_SIZE(cp15_regs); i++)
+		BUG_ON(cmp_reg(&cp15_regs[i-1], &cp15_regs[i]) >= 0);
+	for (i = 1; i < ARRAY_SIZE(cp15_cortex_a15_regs); i++)
+		BUG_ON(cmp_reg(&cp15_cortex_a15_regs[i-1],
+			       &cp15_cortex_a15_regs[i]) >= 0);
+}

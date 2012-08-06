@@ -804,6 +804,7 @@ int kvm_arch_init(void *opaque)
 	if (err)
 		goto out_err;
 
+	kvm_coproc_table_init();
 	return 0;
 out_err:
 	return err;
