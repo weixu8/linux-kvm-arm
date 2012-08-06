@@ -44,6 +44,7 @@
 #include <asm/kvm_mmu.h>
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_coproc.h>
+#include <asm/opcodes.h>
 
 #ifdef REQUIRES_SEC
 __asm__(".arch_extension	sec");
@@ -464,6 +465,50 @@ static exit_handle_fn arm_exit_handlers[] = {
 };
 
 /*
+ * A conditional instruction is allowed to trap, even though it
+ * wouldn't be executed.  So let's re-implement the hardware, in
+ * software!
+ */
+static bool kvm_condition_valid(struct kvm_vcpu *vcpu)
+{
+	unsigned long cpsr, cond, insn;
+
+	/*
+	 * Exception Code 0 can only happen if we set HCR.TGE to 1, to
+	 * catch undefined instructions, and then we won't get past
+	 * the arm_exit_handlers test anyway.
+	 */
+	BUG_ON(((vcpu->arch.hsr & HSR_EC) >> HSR_EC_SHIFT) == 0);
+
+	/* Top two bits non-zero?  Unconditional. */
+	if (vcpu->arch.hsr >> 30)
+		return true;
+
+	cpsr = *vcpu_cpsr(vcpu);
+
+	/* Is condition field valid? */
+	if ((vcpu->arch.hsr & HSR_CV) >> HSR_CV_SHIFT)
+		cond = (vcpu->arch.hsr & HSR_COND) >> HSR_COND_SHIFT;
+	else {
+		/* This can happen in Thumb mode: examine IT state. */
+		unsigned long it;
+
+		it = ((cpsr >> 8) & 0xFC) | ((cpsr >> 25) & 0x3);
+
+		/* it == 0 => unconditional. */
+		if (it == 0)
+			return true;
+
+		/* The cond for this insn works out as the top 4 bits. */
+		cond = (it >> 4);
+	}
+
+	/* Shift makes it look like an ARM-mode instruction */
+	insn = cond << 28;
+	return arm_check_condition(insn, cpsr) != ARM_OPCODE_CONDTEST_FAIL;
+}
+
+/*
  * Return 0 to return to guest, < 0 on error, exit_reason ( > 0) on proper
  * exit to QEMU.
  */
@@ -492,6 +537,11 @@ static int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 				(unsigned int)vcpu->arch.hsr);
 			BUG();
 		}
+
+		/* See ARM ARM B1.14.1: "Hyp traps on instructions
+		 * that fail their condition code check" */
+		if (!kvm_condition_valid(vcpu))
+			return 0;
 
 		return arm_exit_handlers[hsr_ec](vcpu, run);
 	default:

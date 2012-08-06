@@ -166,6 +166,10 @@
 #define HSR_FSC_TYPE	(0x3c)
 #define HSR_SSE		(1 << 21)
 #define HSR_WNR		(1 << 6)
+#define HSR_CV_SHIFT	(24)
+#define HSR_CV		(1U << HSR_CV_SHIFT)
+#define HSR_COND_SHIFT	(20)
+#define HSR_COND	(0xfU << HSR_COND_SHIFT)
 
 #define FSC_FAULT	(0x04)
 #define FSC_PERM	(0x0c)
