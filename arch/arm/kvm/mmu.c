@@ -354,7 +354,7 @@ static int stage2_set_pte(struct kvm *kvm, phys_addr_t addr,
 	/* Create 2nd stage page table mapping - Level 3 */
 	set_pte_ext(pte, *new_pte, 0);
 
-	return 1;
+	return 0;
 }
 
 static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
@@ -574,6 +574,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	struct kvm_memory_slot *memslot = NULL;
 	bool is_iabt;
 	gfn_t gfn;
+	int ret;
 
 	hsr_ec = vcpu->arch.hsr >> HSR_EC_SHIFT;
 	is_iabt = (hsr_ec == HSR_EC_IABT);
@@ -607,7 +608,8 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		return -EINVAL;
 	}
 
-	return user_mem_abort(vcpu, fault_ipa, gfn, memslot, is_iabt);
+	ret = user_mem_abort(vcpu, fault_ipa, gfn, memslot, is_iabt);
+	return ret ? ret : 1;
 }
 
 static bool hva_to_gpa(struct kvm *kvm, unsigned long hva, gpa_t *gpa)
