@@ -122,6 +122,14 @@ struct kvm_vcpu_arch {
 	u64 pc_ipa2;		/* same as above, but for non-aligned wide thumb
 				   instructions */
 
+	/* Floating point registers (VFP and Advanced SIMD/NEON) */
+	struct vfp_hard_struct vfp_guest;
+	struct vfp_hard_struct vfp_host;
+
+	/*
+	 * Anything that is not used directly from assembly code goes
+	 * here.
+	 */
 	/* dcache set/way operation pending */
 	int last_pcpu;
 	cpumask_t require_dcache_flush;
@@ -135,10 +143,6 @@ struct kvm_vcpu_arch {
 
 	/* Hyp exception information */
 	u32 hyp_pc;		/* PC when exception was taken from Hyp mode */
-
-	/* Floating point registers (VFP and Advanced SIMD/NEON) */
-	struct vfp_hard_struct vfp_guest;
-	struct vfp_hard_struct vfp_host;
 };
 
 struct kvm_vm_stat {
