@@ -54,6 +54,9 @@ __asm__(".arch_extension	virt");
 
 static DEFINE_PER_CPU(unsigned long, kvm_arm_hyp_stack_page);
 
+/* Per-CPU variable containing the host VFP state */
+static DEFINE_PER_CPU(struct vfp_hard_struct, kvm_host_vfp_state);
+
 /* The VMID used in the VTTBR */
 static atomic64_t kvm_vmid_gen = ATOMIC64_INIT(1);
 static u8 kvm_next_vmid;
@@ -276,6 +279,7 @@ void kvm_arch_vcpu_uninit(struct kvm_vcpu *vcpu)
 void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
 	vcpu->cpu = cpu;
+	vcpu->arch.vfp_host = this_cpu_ptr(&kvm_host_vfp_state);
 
 	/*
 	 * Check whether this vcpu requires the cache to be flushed on
@@ -807,6 +811,21 @@ static int init_hyp_mode(void)
 	for_each_online_cpu(cpu)
 		smp_call_function_single(cpu, cpu_set_vector,
 					 __kvm_hyp_vector, 1);
+
+	/*
+	 * Map the host VFP structures
+	 */
+	for_each_possible_cpu(cpu) {
+		struct vfp_hard_struct *vfp;
+
+		vfp = &per_cpu(kvm_host_vfp_state, cpu);
+		err = create_hyp_mappings(vfp, vfp + 1);
+
+		if (err) {
+			kvm_err("Cannot map host VFP state\n");
+			goto out_free_mappings;
+		}
+	}
 
 	return 0;
 out_free_mappings:

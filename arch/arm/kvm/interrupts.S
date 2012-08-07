@@ -90,15 +90,13 @@ ENTRY(__kvm_flush_vm_context)
 	bx	lr
 ENDPROC(__kvm_flush_vm_context)
 
-/* Clobbers {r2-r7} */
-.macro store_vfp_state vfp_off, vcpup
-	add	r6, \vcpup, \vfp_off
-
+/* Clobbers {r2-r6} */
+.macro store_vfp_state vfp_base
 	@ The VFPFMRX and VFPFMXR macros are the VMRS and VMSR instructions
 	VFPFMRX	r2, FPEXC
 	@ Make sure VFP is enabled so we can touch the registers.
-	orr	r7, r2, #FPEXC_EN
-	VFPFMXR	FPEXC, r7
+	orr	r6, r2, #FPEXC_EN
+	VFPFMXR	FPEXC, r6
 
 	VFPFMRX	r3, FPSCR
 	tst	r2, #FPEXC_EX		@ Check for VFP Subarchitecture
@@ -108,19 +106,17 @@ ENDPROC(__kvm_flush_vm_context)
 	VFPFMRX r4, FPINST
 	tst	r2, #FPEXC_FP2V
 	VFPFMRX r5, FPINST2, ne		@ vmrsne
-	bic	r7, r2, #FPEXC_EX	@ FPEXC_EX disable
-	VFPFMXR	FPEXC, r7
+	bic	r6, r2, #FPEXC_EX	@ FPEXC_EX disable
+	VFPFMXR	FPEXC, r6
 1:
-	VFPFSTMIA r6, r7		@ Save VFP registers
-	stm	r6, {r2-r5}		@ Save FPEXC, FPSCR, FPINST, FPINST2
+	VFPFSTMIA \vfp_base, r6		@ Save VFP registers
+	stm	\vfp_base, {r2-r5}	@ Save FPEXC, FPSCR, FPINST, FPINST2
 .endm
 
-/* Assume FPEXC_EN is on and FPEXC_EX is off, clobbers {r2-r7} */
-.macro restore_vfp_state vfp_off, vcpup
-	add	r6, \vcpup, \vfp_off
-
-	VFPFLDMIA r6, r7		@ Load VFP registers
-	ldm	r6, {r2-r5}		@ Load FPEXC, FPSCR, FPINST, FPINST2
+/* Assume FPEXC_EN is on and FPEXC_EX is off, clobbers {r2-r6} */
+.macro restore_vfp_state vfp_base
+	VFPFLDMIA \vfp_base, r6		@ Load VFP registers
+	ldm	\vfp_base, {r2-r5}	@ Load FPEXC, FPSCR, FPINST, FPINST2
 
 	VFPFMXR FPSCR, r3
 	tst	r2, #FPEXC_EX		@ Check for VFP Subarchitecture
@@ -456,8 +452,11 @@ __kvm_vcpu_return:
 	bne	after_vfp_restore
 
 	@ Switch VFP/NEON hardware state to the host's
-	store_vfp_state #VCPU_VFP_GUEST, r1
-	restore_vfp_state #VCPU_VFP_HOST, r1
+	add	r7, r1, #VCPU_VFP_GUEST
+	store_vfp_state r7
+	add	r7, r1, #VCPU_VFP_HOST
+	ldr	r7, [r7]
+	restore_vfp_state r7
 
 after_vfp_restore:
 	@ Restore FPEXC_EN which we clobbered on entry
@@ -714,8 +713,11 @@ switch_to_guest_vfp:
 	set_hcptr 0, (HCPTR_TCP(10) | HCPTR_TCP(11))
 
 	@ Switch VFP/NEON hardware state to the guest's
-	store_vfp_state #VCPU_VFP_HOST, r0
-	restore_vfp_state #VCPU_VFP_GUEST, r0
+	add	r7, r0, #VCPU_VFP_HOST
+	ldr	r7, [r7]
+	store_vfp_state r7
+	add	r7, r0, #VCPU_VFP_GUEST
+	restore_vfp_state r7
 
 	pop	{r3-r7}
 	pop	{r0-r2}

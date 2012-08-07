@@ -124,7 +124,7 @@ struct kvm_vcpu_arch {
 
 	/* Floating point registers (VFP and Advanced SIMD/NEON) */
 	struct vfp_hard_struct vfp_guest;
-	struct vfp_hard_struct vfp_host;
+	struct vfp_hard_struct *vfp_host;
 
 	/*
 	 * Anything that is not used directly from assembly code goes
