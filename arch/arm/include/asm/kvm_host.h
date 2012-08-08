@@ -45,7 +45,7 @@ struct kvm_arch {
 	u32    vmid;
 
 	/* 1-level 2nd stage table and lock */
-	struct mutex pgd_mutex;
+	spinlock_t pgd_lock;
 	pgd_t *pgd;
 
 	/* VTTBR value associated with above pgd and vmid */
@@ -61,6 +61,17 @@ struct kvm_arch {
 #define EXCEPTION_IMPRECISE 0x04
 #define EXCEPTION_IRQ       0x02
 #define EXCEPTION_FIQ       0x01
+
+#define KVM_NR_MEM_OBJS     40
+
+/*
+ * We don't want allocation failures within the mmu code, so we preallocate
+ * enough memory for a single page fault in a cache.
+ */
+struct kvm_mmu_memory_cache {
+	int nobjs;
+	void *objects[KVM_NR_MEM_OBJS];
+};
 
 struct kvm_vcpu_regs {
 	u32 usr_regs[15];	/* R0_usr - R14_usr */
@@ -143,6 +154,9 @@ struct kvm_vcpu_arch {
 
 	/* Hyp exception information */
 	u32 hyp_pc;		/* PC when exception was taken from Hyp mode */
+
+	/* Cache some mmu pages needed inside spinlock regions */
+	struct kvm_mmu_memory_cache mmu_page_cache;
 };
 
 struct kvm_vm_stat {

@@ -108,7 +108,7 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	ret = kvm_alloc_stage2_pgd(kvm);
 	if (ret)
 		goto out_fail_alloc;
-	mutex_init(&kvm->arch.pgd_mutex);
+	spin_lock_init(&kvm->arch.pgd_lock);
 
 	ret = create_hyp_mappings(kvm, kvm + 1);
 	if (ret)
@@ -239,6 +239,7 @@ out:
 
 void kvm_arch_vcpu_free(struct kvm_vcpu *vcpu)
 {
+	kvm_mmu_free_memory_caches(vcpu);
 	kmem_cache_free(kvm_vcpu_cache, vcpu);
 }
 

@@ -32,6 +32,38 @@
 
 static DEFINE_MUTEX(kvm_hyp_pgd_mutex);
 
+static int mmu_topup_memory_cache(struct kvm_mmu_memory_cache *cache,
+				  int min, int max)
+{
+	void *page;
+
+	BUG_ON(max > KVM_NR_MEM_OBJS);
+	if (cache->nobjs >= min)
+		return 0;
+	while (cache->nobjs < max) {
+		page = (void *)__get_free_page(PGALLOC_GFP);
+		if (!page)
+			return -ENOMEM;
+		cache->objects[cache->nobjs++] = page;
+	}
+	return 0;
+}
+
+static void mmu_free_memory_cache(struct kvm_mmu_memory_cache *mc)
+{
+	while (mc->nobjs)
+		free_page((unsigned long)mc->objects[--mc->nobjs]);
+}
+
+static void *mmu_memory_cache_alloc(struct kvm_mmu_memory_cache *mc)
+{
+	void *p;
+
+	BUG_ON(!mc || !mc->nobjs);
+	p = mc->objects[--mc->nobjs];
+	return p;
+}
+
 static void free_ptes(pmd_t *pmd, unsigned long addr)
 {
 	pte_t *pte;
@@ -384,8 +416,8 @@ static void stage2_clear_pte(struct kvm *kvm, phys_addr_t addr)
 	put_page(page);
 }
 
-static int stage2_set_pte(struct kvm *kvm, phys_addr_t addr,
-			  const pte_t *new_pte)
+static void stage2_set_pte(struct kvm *kvm, struct kvm_mmu_memory_cache *cache,
+			   phys_addr_t addr, const pte_t *new_pte)
 {
 	pgd_t *pgd;
 	pud_t *pud;
@@ -396,11 +428,9 @@ static int stage2_set_pte(struct kvm *kvm, phys_addr_t addr,
 	pgd = kvm->arch.pgd + pgd_index(addr);
 	pud = pud_offset(pgd, addr);
 	if (pud_none(*pud)) {
-		pmd = pmd_alloc_one(NULL, addr);
-		if (!pmd) {
-			kvm_err("Cannot allocate 2nd stage pmd\n");
-			return -ENOMEM;
-		}
+		if (!cache)
+			return; /* ignore calls from kvm_set_spte_hva */
+		pmd = mmu_memory_cache_alloc(cache);
 		pud_populate(NULL, pud, pmd);
 		pmd += pmd_index(addr);
 		get_page(virt_to_page(pud));
@@ -409,11 +439,10 @@ static int stage2_set_pte(struct kvm *kvm, phys_addr_t addr,
 
 	/* Create 2nd stage page table mapping - Level 2 */
 	if (pmd_none(*pmd)) {
-		pte = pte_alloc_one_kernel(NULL, addr);
-		if (!pte) {
-			kvm_err("Cannot allocate 2nd stage pte\n");
-			return -ENOMEM;
-		}
+		if (!cache)
+			return; /* ignore calls from kvm_set_spte_hva */
+		pte = mmu_memory_cache_alloc(cache);
+		clean_pte_table(pte);
 		pmd_populate_kernel(NULL, pmd, pte);
 		pte += pte_index(addr);
 		get_page(virt_to_page(pmd));
@@ -424,8 +453,6 @@ static int stage2_set_pte(struct kvm *kvm, phys_addr_t addr,
 	BUG_ON(pte_none(pte));
 	set_pte_ext(pte, *new_pte, 0);
 	get_page(virt_to_page(pte));
-
-	return 0;
 }
 
 static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
@@ -436,6 +463,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	pfn_t pfn;
 	int ret;
 	bool write_fault, writable;
+	struct kvm_mmu_memory_cache *memcache = &vcpu->arch.mmu_page_cache;
 
 	/* TODO: Use instr. decoding for non-ISV to determine r/w fault */
 	if (is_iabt)
@@ -460,14 +488,16 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 		return -EFAULT;
 	}
 
-	mutex_lock(&vcpu->kvm->arch.pgd_mutex);
+	/* We need minimum second+third level pages */
+	ret = mmu_topup_memory_cache(memcache, 2, KVM_NR_MEM_OBJS);
+	if (ret)
+		return ret;
 	new_pte = pfn_pte(pfn, PAGE_KVM_GUEST);
 	if (writable)
 		new_pte |= L_PTE2_WRITE;
-	ret = stage2_set_pte(vcpu->kvm, fault_ipa, &new_pte);
-	if (ret)
-		put_page(pfn_to_page(pfn));
-	mutex_unlock(&vcpu->kvm->arch.pgd_mutex);
+	spin_lock(&vcpu->kvm->arch.pgd_lock);
+	stage2_set_pte(vcpu->kvm, memcache, fault_ipa, &new_pte);
+	spin_unlock(&vcpu->kvm->arch.pgd_lock);
 
 	return ret;
 }
@@ -487,24 +517,29 @@ int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
 	pgprot_t prot;
 	int ret = 0;
 	unsigned long pfn;
+	struct kvm_mmu_memory_cache cache;
 
 	end = (guest_ipa + size + PAGE_SIZE - 1) & PAGE_MASK;
 	prot = __pgprot(get_mem_type_prot_pte(MT_DEVICE) | L_PTE_USER |
 			L_PTE2_READ | L_PTE2_WRITE);
 	pfn = __phys_to_pfn(pa);
 
-	mutex_lock(&kvm->arch.pgd_mutex);
+
 	for (addr = guest_ipa; addr < end; addr += PAGE_SIZE) {
 		pte_t pte = pfn_pte(pfn, prot);
 
-		ret = stage2_set_pte(kvm, addr, &pte);
+		ret = mmu_topup_memory_cache(&cache, 2, 2);
 		if (ret)
-			break;
+			goto out;
+		spin_lock(&kvm->arch.pgd_lock);
+		stage2_set_pte(kvm, &cache, addr, &pte);
+		spin_unlock(&kvm->arch.pgd_lock);
 
 		pfn++;
 	}
-	mutex_unlock(&kvm->arch.pgd_mutex);
 
+out:
+	mmu_free_memory_cache(&cache);
 	return ret;
 }
 
@@ -725,7 +760,6 @@ static bool hva_to_gpa(struct kvm *kvm, unsigned long hva, gpa_t *gpa)
 	struct kvm_memory_slot *memslot;
 	bool found = false;
 
-	mutex_lock(&kvm->slots_lock);
 	slots = kvm_memslots(kvm);
 
 	/* we only care about the pages that the guest sees */
@@ -743,7 +777,6 @@ static bool hva_to_gpa(struct kvm *kvm, unsigned long hva, gpa_t *gpa)
 		}
 	}
 
-	mutex_unlock(&kvm->slots_lock);
 	return found;
 }
 
@@ -755,12 +788,12 @@ int kvm_unmap_hva(struct kvm *kvm, unsigned long hva)
 	if (!kvm->arch.pgd)
 		return 0;
 
-	mutex_lock(&kvm->arch.pgd_mutex);
 	found = hva_to_gpa(kvm, hva, &gpa);
 	if (found) {
+		spin_lock(&kvm->arch.pgd_lock);
 		stage2_clear_pte(kvm, gpa);
+		spin_unlock(&kvm->arch.pgd_lock);
 	}
-	mutex_unlock(&kvm->arch.pgd_mutex);
 	return 0;
 }
 
@@ -772,16 +805,16 @@ void kvm_set_spte_hva(struct kvm *kvm, unsigned long hva, pte_t pte)
 	if (!kvm->arch.pgd)
 		return;
 
-	mutex_lock(&kvm->arch.pgd_mutex);
 	found = hva_to_gpa(kvm, hva, &gpa);
 	if (found) {
-		stage2_set_pte(kvm, gpa, &pte);
-		/*
-		 * Ignore return code from stage2_set_pte, since -ENOMEM would
-		 * indicate this IPA is is not mapped and there is no harm
-		 * that the PTE changed.
-		 */
+		spin_lock(&kvm->arch.pgd_lock);
+		stage2_set_pte(kvm, NULL, gpa, &pte);
+		spin_unlock(&kvm->arch.pgd_lock);
 		__kvm_tlb_flush_vmid(kvm);
 	}
-	mutex_unlock(&kvm->arch.pgd_mutex);
+}
+
+void kvm_mmu_free_memory_caches(struct kvm_vcpu *vcpu)
+{
+	mmu_free_memory_cache(&vcpu->arch.mmu_page_cache);
 }
