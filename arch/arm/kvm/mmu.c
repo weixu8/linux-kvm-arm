@@ -340,7 +340,7 @@ static void stage2_clear_pte(struct kvm *kvm, phys_addr_t addr)
 	pte_t *pte;
 	struct page *page;
 
-	pr_info("Clearing PTE&%08llx\n", addr);
+	kvm_debug("Clearing PTE&%08llx\n", addr);
 	pgd = kvm->arch.pgd + pgd_index(addr);
 	pud = pud_offset(pgd, addr);
 	BUG_ON(pud_none(*pud));
@@ -369,8 +369,8 @@ static void stage2_clear_pte(struct kvm *kvm, phys_addr_t addr)
 		return;
 
 	/*
-	 * Need to remove pmd page. This is the worse case, and we end
-	 * up invalidating TLB twice. Should we care, really?
+	 * Need to remove pmd page. This is the worst case, and we end
+	 * up invalidating the TLB twice. No big deal.
 	 */
 	pud_clear(pud);
 	__kvm_tlb_flush_vmid(kvm);
@@ -701,7 +701,6 @@ static bool hva_to_gpa(struct kvm *kvm, unsigned long hva, gpa_t *gpa)
 			/* no overlapping memslots allowed: break */
 			break;
 		}
-
 	}
 
 	mutex_unlock(&kvm->slots_lock);
