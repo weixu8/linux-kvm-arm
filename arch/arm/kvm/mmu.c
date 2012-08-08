@@ -517,7 +517,7 @@ int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
 	pgprot_t prot;
 	int ret = 0;
 	unsigned long pfn;
-	struct kvm_mmu_memory_cache cache;
+	struct kvm_mmu_memory_cache cache = { 0, };
 
 	end = (guest_ipa + size + PAGE_SIZE - 1) & PAGE_MASK;
 	prot = __pgprot(get_mem_type_prot_pte(MT_DEVICE) | L_PTE_USER |
