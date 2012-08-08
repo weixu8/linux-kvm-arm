@@ -108,23 +108,13 @@ int kvm_handle_cp14_access(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	return 1;
 }
 
-static bool ignore_write(struct kvm_vcpu *vcpu,
-			 const struct coproc_params *p,
-			 bool trace)
+static bool ignore_write(struct kvm_vcpu *vcpu, const struct coproc_params *p)
 {
-	if (trace)
-		trace_kvm_emulate_cp15_imp(p->Op1, p->Rt1, p->CRn, p->CRm,
-					   p->Op2, p->is_write);
 	return true;
 }
 
-static bool read_zero(struct kvm_vcpu *vcpu,
-		      const struct coproc_params *p,
-		      bool trace)
+static bool read_zero(struct kvm_vcpu *vcpu, const struct coproc_params *p)
 {
-	if (trace)
-		trace_kvm_emulate_cp15_imp(p->Op1, p->Rt1, p->CRn, p->CRm,
-					   p->Op2, p->is_write);
 	*vcpu_reg(vcpu, p->Rt1) = 0;
 	return true;
 }
@@ -135,7 +125,7 @@ static bool access_l2ctlr(struct kvm_vcpu *vcpu,
 			  const struct coproc_reg *r)
 {
 	if (p->is_write)
-		return ignore_write(vcpu, p, false);
+		return ignore_write(vcpu, p);
 
 	*vcpu_reg(vcpu, p->Rt1) = vcpu->arch.cp15[c9_L2CTLR];
 	return true;
@@ -159,7 +149,7 @@ static bool access_l2ectlr(struct kvm_vcpu *vcpu,
 			   const struct coproc_reg *r)
 {
 	if (p->is_write)
-		return ignore_write(vcpu, p, false);
+		return ignore_write(vcpu, p);
 
 	*vcpu_reg(vcpu, p->Rt1) = 0;
 	return true;
@@ -172,7 +162,7 @@ static bool access_cbar(struct kvm_vcpu *vcpu,
 {
 	if (p->is_write)
 		return false;
-	return read_zero(vcpu, p, false);
+	return read_zero(vcpu, p);
 }
 
 /* A15 TRM 4.3.28: RO WI */
@@ -181,7 +171,7 @@ static bool access_actlr(struct kvm_vcpu *vcpu,
 			 const struct coproc_reg *r)
 {
 	if (p->is_write)
-		return ignore_write(vcpu, p, false);
+		return ignore_write(vcpu, p);
 
 	*vcpu_reg(vcpu, p->Rt1) = vcpu->arch.cp15[c1_ACTLR];
 	return true;
@@ -257,9 +247,9 @@ static bool pm_fake(struct kvm_vcpu *vcpu,
 		    const struct coproc_reg *r)
 {
 	if (p->is_write)
-		return ignore_write(vcpu, p, false);
+		return ignore_write(vcpu, p);
 	else
-		return read_zero(vcpu, p, false);
+		return read_zero(vcpu, p);
 }
 
 #define access_pmcr pm_fake
@@ -471,6 +461,9 @@ static int emulate_cp15(struct kvm_vcpu *vcpu,
 {
 	size_t num;
 	const struct coproc_reg *table, *r;
+
+	trace_kvm_emulate_cp15_imp(params->Op1, params->Rt1, params->CRn,
+				   params->CRm, params->Op2, params->is_write);
 
 	table = get_target_table(vcpu->arch.target, &num);
 
