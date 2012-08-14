@@ -378,9 +378,9 @@ static int kvm_ls_length(struct kvm_vcpu *vcpu, u32 instr)
 int kvm_emulate_mmio_ls(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			unsigned long instr)
 {
-	unsigned long rd, rn, offset, len, instr_len;
+	unsigned long rd, rn, offset, len;
 	int index;
-	bool is_write, is_thumb;
+	bool is_write;
 
 	trace_kvm_mmio_emulate(vcpu->arch.regs.pc, instr, vcpu->arch.regs.cpsr);
 
@@ -416,14 +416,7 @@ int kvm_emulate_mmio_ls(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	 * The MMIO instruction is emulated and should not be re-executed
 	 * in the guest.
 	 */
-	is_thumb = !!(*vcpu_cpsr(vcpu) & PSR_T_BIT);
-	if (is_thumb && !is_wide_instruction(instr))
-		instr_len = 2;
-	else
-		instr_len = 4;
-
-	*vcpu_pc(vcpu) += instr_len;
-	kvm_adjust_itstate(vcpu);
+	kvm_skip_instr(vcpu, is_wide_instruction(instr));
 	vcpu->run->exit_reason = KVM_EXIT_MMIO;
 	return 0;
 }
@@ -465,6 +458,23 @@ void kvm_adjust_itstate(struct kvm_vcpu *vcpu)
 	cpsr |= (itbits & 0x3) << 25;
 	*vcpu_cpsr(vcpu) = cpsr;
 }
+
+/**
+ * kvm_skip_instr - skip a trapped instruction and proceed to the next
+ * @vcpu: The vcpu pointer
+ */
+void kvm_skip_instr(struct kvm_vcpu *vcpu, bool is_wide_instr)
+{
+	bool is_thumb;
+
+	is_thumb = !!(*vcpu_cpsr(vcpu) & PSR_T_BIT);
+	if (is_thumb && !is_wide_instr)
+		*vcpu_pc(vcpu) += 2;
+	else
+		*vcpu_pc(vcpu) += 4;
+	kvm_adjust_itstate(vcpu);
+}
+
 
 /******************************************************************************
  * Inject exceptions into the guest

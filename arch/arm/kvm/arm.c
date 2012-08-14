@@ -538,10 +538,15 @@ static int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 			BUG();
 		}
 
-		/* See ARM ARM B1.14.1: "Hyp traps on instructions
-		 * that fail their condition code check" */
-		if (!kvm_condition_valid(vcpu))
-			return 0;
+		/*
+		 * See ARM ARM B1.14.1: "Hyp traps on instructions
+		 * that fail their condition code check"
+		 */
+		if (!kvm_condition_valid(vcpu)) {
+			bool is_wide = vcpu->arch.hsr & HSR_IL;
+			kvm_skip_instr(vcpu, is_wide);
+			return 1;
+		}
 
 		return arm_exit_handlers[hsr_ec](vcpu, run);
 	default:
