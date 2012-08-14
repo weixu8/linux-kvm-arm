@@ -689,7 +689,11 @@ guest_trap:
 	ands	r2, r2, #1
 	bne	2f
 	mrs	r3, ELR_hyp
-	mcr	p15, 0, r3, c7, c8, 0	@ VA to PA, ATS1CPR
+	mrs	r7, spsr
+	and	r7, r7, #0xf
+	cmp	r7, #0			@ fault happened in user mode?
+	mcreq	p15, 0, r3, c7, c8, 2	@ VA to PA, ATS1CUR
+	mcrne	p15, 0, r3, c7, c8, 0	@ VA to PA, ATS1CPR
 	mrrc	p15, 0, r4, r5, c7	@ PAR
 	add	r6, r1, #VCPU_PC_IPA
 	strd	r4, r5, [r6]
@@ -701,7 +705,9 @@ guest_trap:
 	cmp	r4, r5
 	bne	2f
 	add	r4, r3, #2		@ _really_ unlikely!
-	mcr	p15, 0, r4, c7, c8, 0	@ VA to PA, ATS1CPR
+	cmp	r7, #0			@ fault happened in user mode?
+	mcreq	p15, 0, r4, c7, c8, 2	@ VA to PA, ATS1CUR
+	mcrne	p15, 0, r4, c7, c8, 0	@ VA to PA, ATS1CPR
 	mrrc	p15, 0, r4, r5, c7	@ PAR
 	add	r6, r1, #VCPU_PC_IPA2
 	strd	r4, r5, [r6]
