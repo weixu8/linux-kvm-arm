@@ -878,6 +878,14 @@ out_free_pages:
 	goto out;
 }
 
+void huge_pmd_set_accessed(struct vm_area_struct *vma, unsigned long address,
+			   pmd_t *pmd, int dirty)
+{
+	pmd_t entry = pmd_mkyoung(*pmd);
+	if (pmdp_set_access_flags(vma, address & HPAGE_PMD_MASK, pmd, entry, dirty))
+		update_mmu_cache_pmd(vma, address, pmd);
+}
+
 int do_huge_pmd_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 			unsigned long address, pmd_t *pmd, pmd_t orig_pmd)
 {

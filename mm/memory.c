@@ -3539,7 +3539,8 @@ retry:
 
 		barrier();
 		if (pmd_trans_huge(orig_pmd)) {
-			if (flags & FAULT_FLAG_WRITE &&
+			unsigned int dirty = flags & FAULT_FLAG_WRITE;
+			if (dirty &&
 			    !pmd_write(orig_pmd) &&
 			    !pmd_trans_splitting(orig_pmd)) {
 				ret = do_huge_pmd_wp_page(mm, vma, address, pmd,
@@ -3552,7 +3553,13 @@ retry:
 				if (unlikely(ret & VM_FAULT_OOM))
 					goto retry;
 				return ret;
+			} else if (pmd_trans_huge_lock(pmd, vma) == 1) {
+				if (likely(pmd_same(*pmd, orig_pmd)))
+					huge_pmd_set_accessed(vma, address, pmd,
+							      dirty);
+				spin_unlock(&mm->page_table_lock);
 			}
+
 			return 0;
 		}
 	}
