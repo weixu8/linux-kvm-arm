@@ -163,17 +163,20 @@ void copy_to_user_page(struct vm_area_struct *vma, struct page *page,
 
 void __flush_dcache_page(struct address_space *mapping, struct page *page)
 {
+	struct page *hpage = compound_head(page);
+
 	/*
 	 * Writeback any data associated with the kernel mapping of this
 	 * page.  This ensures that data in the physical page is mutually
 	 * coherent with the kernels mapping.
 	 */
 	if (!PageHighMem(page)) {
-		__cpuc_flush_dcache_area(page_address(page), (PAGE_SIZE << compound_order(page)));
+		size_t size = PAGE_SIZE << compound_order(hpage);
+		__cpuc_flush_dcache_area(page_address(hpage), size);
 	} else {
 		unsigned long i;
-		for(i = 0; i < (1 << compound_order(page)); i++) {
-			struct page *cpage = page + i;
+		for(i = 0; i < (1 << compound_order(hpage)); i++) {
+			struct page *cpage = hpage + i;
 			void *addr = kmap_high_get(cpage);
 			if (addr) {
 				__cpuc_flush_dcache_area(addr, PAGE_SIZE);
