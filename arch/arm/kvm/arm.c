@@ -500,10 +500,13 @@ static int handle_hvc(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	 * Guest called HVC instruction:
 	 * Let it know we don't want that by injecting an undefined exception.
 	 */
+#if 0
 	kvm_debug("hvc: %x (at %08x)", vcpu->arch.hsr & ((1 << 16) - 1),
 		  *vcpu_pc(vcpu));
 	kvm_debug("         HSR: %8x", vcpu->arch.hsr);
 	kvm_inject_undefined(vcpu);
+#endif
+	trace_kvm_guest_hvc(*vcpu_pc(vcpu), vcpu->arch.hsr & 0xffff);
 	return 1;
 }
 
@@ -643,6 +646,40 @@ static int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	}
 }
 
+static void kvm_enable_hyp_ccount(void)
+{
+	unsigned long pmxevtyper, pmselr, pmcr, enable;
+
+	asm volatile("mrc p15, 0, %[dst], c9, c12, 5":
+		     [dst] "=r" (pmselr));
+	asm volatile("mcr p15, 0, %[src], c9, c12, 5": :
+		     [src] "r" (pmselr | 0x1f));
+
+	asm volatile("mrc p15, 0, %[dst], c9, c13, 1":
+		     [dst] "=r" (pmxevtyper));
+
+	pmxevtyper |= (1 << 27); /* enable hyp counting */
+
+	asm volatile("mcr p15, 0, %[src], c9, c13, 1": :
+		     [src] "r" (pmxevtyper));
+
+	asm volatile("mcr p15, 0, %[src], c9, c12, 5\n\t": :
+		     [src] "r" (pmselr));
+
+	asm volatile("mrc p15, 0, %[dst], c9, c12, 0":
+		     [dst] "=r" (pmcr));
+	if (pmcr & (1 << 3))
+		kvm_err("cycle counter divider 64 enabled\n");
+
+	pmcr |= 1;
+	asm volatile("mcr p15, 0, %[src], c9, c12, 0": :
+		     [src] "r" (pmcr));
+
+	/* Use PMCNTENSET to enable the cycle counter */
+	enable = (1 << 31);
+	asm volatile("mcr p15, 0, %[en], c9, c12, 1": :
+		     [en] "r" (enable));
+}
 /**
  * kvm_arch_vcpu_ioctl_run - the main VCPU run function to execute guest code
  * @vcpu:	The VCPU pointer
@@ -712,6 +749,8 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 			kvm_vgic_sync_from_cpu(vcpu);
 			continue;
 		}
+
+		kvm_enable_hyp_ccount();
 
 		/**************************************************************
 		 * Enter the guest
