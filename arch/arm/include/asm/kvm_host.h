@@ -31,7 +31,7 @@
 #define KVM_COALESCED_MMIO_PAGE_OFFSET 1
 #define KVM_HAVE_ONE_REG
 
-#define KVM_VCPU_MAX_FEATURES 0
+#define KVM_VCPU_MAX_FEATURES 1
 
 #define KVM_HPAGE_GFN_SHIFT(_level)	(((_level) - 1) * 21)
 #define KVM_HPAGE_SIZE			(1UL << KVM_HPAGE_GFN_SHIFT(2))
