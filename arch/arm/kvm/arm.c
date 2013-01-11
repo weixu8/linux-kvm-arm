@@ -500,7 +500,7 @@ static int handle_hvc(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
 	trace_kvm_guest_hvc(*vcpu_pc(vcpu), vcpu->arch.hsr & 0xffff);
 
-	if (!kvm_psci_call(vcpu))
+	if (kvm_psci_call(vcpu))
 		return 1;
 
 	return 1;
